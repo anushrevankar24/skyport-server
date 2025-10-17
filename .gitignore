@@ -1,0 +1,10 @@
+.env
+*.log
+
+.env
+skyport-server
+*.log
+.DS_Store
+**/.idea/
+**/.vscode/
+

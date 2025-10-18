@@ -4,14 +4,20 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func Initialize(databaseURL string) (*sql.DB, error) {
-	db, err := sql.Open("postgres", databaseURL)
+	// Use pgx driver which works better with Supabase connection pooler
+	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+
+	// Set connection pool settings optimized for connection pooler
+	db.SetMaxOpenConns(20)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(0) // Reuse connections indefinitely
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)

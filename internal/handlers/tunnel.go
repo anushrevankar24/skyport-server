@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"skyport-server/internal/config"
 	"skyport-server/internal/models"
 	"sync"
 	"time"
@@ -89,6 +90,13 @@ func (h *TunnelHandler) CreateTunnel(c *gin.Context) {
 	var req models.CreateTunnelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate subdomain
+	isValid, validationError := config.ValidateSubdomain(req.Subdomain)
+	if !isValid {
+		c.JSON(http.StatusBadRequest, gin.H{"error": validationError})
 		return
 	}
 

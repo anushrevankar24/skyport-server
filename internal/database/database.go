@@ -9,21 +9,45 @@ import (
 
 func Initialize(databaseURL string) (*sql.DB, error) {
 	// Use pgx driver which works better with Supabase connection pooler
+	// Disable prepared statement caching to avoid conflicts with connection poolers
+	// by adding statement_cache_mode=describe to the connection string
+	if databaseURL != "" {
+		// Check if URL already has query parameters
+		separator := "?"
+		if containsQueryParams(databaseURL) {
+			separator = "&"
+		}
+		// Add statement_cache_mode=describe to disable prepared statement caching
+		databaseURL += separator + "statement_cache_mode=describe"
+	}
+
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	// Set connection pool settings optimized for connection pooler
-	db.SetMaxOpenConns(20)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(0) // Reuse connections indefinitely
+	// Lower values work better with poolers like PgBouncer/Supabase pooler
+	db.SetMaxOpenConns(10)     // Reduced for pooler efficiency
+	db.SetMaxIdleConns(2)      // Keep minimal idle connections
+	db.SetConnMaxLifetime(0)   // Reuse connections indefinitely
+	db.SetConnMaxIdleTime(0)   // Don't close idle connections
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	return db, nil
+}
+
+// containsQueryParams checks if a database URL already has query parameters
+func containsQueryParams(url string) bool {
+	for _, char := range url {
+		if char == '?' {
+			return true
+		}
+	}
+	return false
 }
 
 func RunMigrations(db *sql.DB) error {

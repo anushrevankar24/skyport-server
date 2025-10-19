@@ -298,7 +298,9 @@ func (h *TunnelHandler) handleTunnelConnection(tunnelConn *TunnelConnection, pro
 
 	// Track last heartbeat time
 	lastHeartbeat := time.Now()
+	lastDBUpdate := time.Now()
 	heartbeatTimeout := 45 * time.Second // Mark inactive if no heartbeat for 45 seconds
+	dbUpdateInterval := 30 * time.Second // Only update DB every 30 seconds to reduce load
 
 	// Handle messages from agent in a goroutine
 	go func() {
@@ -316,10 +318,15 @@ func (h *TunnelHandler) handleTunnelConnection(tunnelConn *TunnelConnection, pro
 				log.Printf("Failed to handle tunnel message: %v", err)
 			}
 
-			// Update last seen timestamp on any message from agent
-			_, err = h.db.Exec("UPDATE tunnels SET last_seen = NOW() WHERE id = $1", tunnelConn.TunnelID)
-			if err != nil {
-				log.Printf("Failed to update last seen: %v", err)
+			// Update last seen timestamp only every 30 seconds to reduce DB load
+			// This is fine since we track heartbeat in memory
+			if time.Since(lastDBUpdate) >= dbUpdateInterval {
+				_, err = h.db.Exec("UPDATE tunnels SET last_seen = NOW() WHERE id = $1", tunnelConn.TunnelID)
+				if err != nil {
+					log.Printf("Failed to update last seen: %v", err)
+				} else {
+					lastDBUpdate = time.Now()
+				}
 			}
 
 			// Refresh heartbeat on any received message

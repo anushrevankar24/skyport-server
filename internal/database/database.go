@@ -28,10 +28,10 @@ func Initialize(databaseURL string) (*sql.DB, error) {
 
 	// Set connection pool settings optimized for connection pooler
 	// Lower values work better with poolers like PgBouncer/Supabase pooler
-	db.SetMaxOpenConns(10)     // Reduced for pooler efficiency
-	db.SetMaxIdleConns(2)      // Keep minimal idle connections
-	db.SetConnMaxLifetime(0)   // Reuse connections indefinitely
-	db.SetConnMaxIdleTime(0)   // Don't close idle connections
+	db.SetMaxOpenConns(10)   // Reduced for pooler efficiency
+	db.SetMaxIdleConns(2)    // Keep minimal idle connections
+	db.SetConnMaxLifetime(0) // Reuse connections indefinitely
+	db.SetConnMaxIdleTime(0) // Don't close idle connections
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)

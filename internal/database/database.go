@@ -8,10 +8,10 @@ import (
 )
 
 func Initialize(databaseURL string) (*sql.DB, error) {
-	// Use pgx driver which works better with Supabase connection pooler
-	// Disable prepared statement caching to avoid conflicts with connection poolers
-	// by adding statement_cache_mode=describe to the connection string
-	if databaseURL != "" {
+	// Use pgx driver which works with both local PostgreSQL and connection poolers
+	// Only add statement_cache_mode for connection poolers (Supabase, PgBouncer, etc.)
+	// Standard PostgreSQL doesn't support this parameter
+	if databaseURL != "" && needsStatementCacheMode(databaseURL) {
 		// Check if URL already has query parameters
 		separator := "?"
 		if containsQueryParams(databaseURL) {
@@ -44,6 +44,55 @@ func Initialize(databaseURL string) (*sql.DB, error) {
 func containsQueryParams(url string) bool {
 	for _, char := range url {
 		if char == '?' {
+			return true
+		}
+	}
+	return false
+}
+
+// needsStatementCacheMode detects if we're connecting through a connection pooler
+// Connection poolers like Supabase and PgBouncer support and need statement_cache_mode
+// Local PostgreSQL installations do not support this parameter
+func needsStatementCacheMode(url string) bool {
+	// Connection pooler indicators in the URL
+	poolerIndicators := []string{
+		"supabase.co",     // Supabase hosted
+		"pooler.supabase", // Supabase pooler
+		"pgbouncer",       // PgBouncer
+		":6543",           // PgBouncer default port
+		"pooler=true",     // Explicit pooler flag
+	}
+
+	// Check if any pooler indicator is present
+	for _, indicator := range poolerIndicators {
+		if contains(url, indicator) {
+			return true
+		}
+	}
+
+	// Local PostgreSQL (localhost, 127.0.0.1) - don't use statement_cache_mode
+	localIndicators := []string{"localhost", "127.0.0.1"}
+	for _, indicator := range localIndicators {
+		if contains(url, indicator) {
+			return false
+		}
+	}
+
+	return false
+}
+
+// contains checks if a string contains a substring
+func contains(str, substr string) bool {
+	return len(str) >= len(substr) &&
+		(str == substr ||
+			str[:len(substr)] == substr ||
+			str[len(str)-len(substr):] == substr ||
+			containsMiddle(str, substr))
+}
+
+func containsMiddle(str, substr string) bool {
+	for i := 0; i <= len(str)-len(substr); i++ {
+		if str[i:i+len(substr)] == substr {
 			return true
 		}
 	}

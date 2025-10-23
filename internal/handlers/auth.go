@@ -206,7 +206,7 @@ func (h *AuthHandler) AgentAuth(c *gin.Context) {
 		return
 	}
 
-	// Parse and validate token
+	// Parse and validate the incoming browser token
 	token, err := jwt.Parse(req.Token, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
@@ -247,9 +247,17 @@ func (h *AuthHandler) AgentAuth(c *gin.Context) {
 		return
 	}
 
+	// Generate permanent agent service token (no expiry like Cloudflare/Ngrok)
+	agentToken, err := h.generateAgentToken(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate agent token"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"valid": true,
-		"user":  user,
+		"valid":       true,
+		"user":        user,
+		"agent_token": agentToken, // Permanent service token for agent
 	})
 }
 
@@ -279,12 +287,14 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+// generateTokens creates browser tokens with industry-standard expiry times
 func (h *AuthHandler) generateTokens(userID string) (string, string, error) {
-	// Generate access token (expires in 1 hour)
+	// Generate access token (expires in 1 hour - industry standard)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": userID,
 		"exp":     time.Now().Add(time.Hour).Unix(),
 		"iat":     time.Now().Unix(),
+		"type":    "access",
 	})
 
 	tokenString, err := token.SignedString([]byte(h.jwtSecret))
@@ -292,10 +302,10 @@ func (h *AuthHandler) generateTokens(userID string) (string, string, error) {
 		return "", "", err
 	}
 
-	// Generate refresh token (expires in 7 days)
+	// Generate refresh token (expires in 30 days - industry standard like ChatGPT, Google)
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": userID,
-		"exp":     time.Now().Add(time.Hour * 24 * 7).Unix(),
+		"exp":     time.Now().Add(time.Hour * 24 * 30).Unix(), // 30 days
 		"iat":     time.Now().Unix(),
 		"type":    "refresh",
 	})
@@ -308,10 +318,29 @@ func (h *AuthHandler) generateTokens(userID string) (string, string, error) {
 	return tokenString, refreshTokenString, nil
 }
 
+// generateAgentToken creates a permanent service token for agents (no expiry like Cloudflare/Ngrok)
+func (h *AuthHandler) generateAgentToken(userID string) (string, error) {
+	// Generate permanent agent token (no expiry - service token like Cloudflare Tunnel)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": userID,
+		"iat":     time.Now().Unix(),
+		"type":    "agent",
+		"service": true, // Mark as service token
+		// No "exp" claim = no expiry
+	})
+
+	tokenString, err := token.SignedString([]byte(h.jwtSecret))
+	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
+}
+
 func (h *AuthHandler) saveRefreshToken(userID uuid.UUID, refreshToken string) error {
 	_, err := h.db.Exec(
 		"INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)",
-		userID, refreshToken, time.Now().Add(time.Hour*24*7),
+		userID, refreshToken, time.Now().Add(time.Hour*24*30), // 30 days
 	)
 	return err
 }

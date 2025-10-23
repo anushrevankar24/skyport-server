@@ -37,8 +37,19 @@ func main() {
 	r := gin.Default()
 
 	// CORS middleware
+	// Support both with and without www subdomain
+	allowedOrigins := []string{cfg.WebAppURL}
+	// If WebAppURL has www, also allow without it (and vice versa)
+	if len(cfg.WebAppURL) > 12 && cfg.WebAppURL[8:12] == "www." {
+		// Has www, add version without it
+		allowedOrigins = append(allowedOrigins, cfg.WebAppURL[:8]+cfg.WebAppURL[12:])
+	} else if len(cfg.WebAppURL) > 8 {
+		// Doesn't have www, add version with it
+		allowedOrigins = append(allowedOrigins, cfg.WebAppURL[:8]+"www."+cfg.WebAppURL[8:])
+	}
+
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{cfg.WebAppURL},
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},

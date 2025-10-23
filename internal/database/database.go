@@ -8,16 +8,16 @@ import (
 )
 
 func Initialize(databaseURL string) (*sql.DB, error) {
-	// Use pgx driver which works with both local PostgreSQL and connection poolers
-	// Only add statement_cache_mode for connection poolers (Supabase, PgBouncer, etc.)
-	// Standard PostgreSQL doesn't support this parameter
-	if databaseURL != "" && needsStatementCacheMode(databaseURL) {
+	// Disable prepared statement caching to avoid conflicts with connection poolers
+	// This prevents "prepared statement already exists" errors
+	if databaseURL != "" {
 		// Check if URL already has query parameters
 		separator := "?"
 		if containsQueryParams(databaseURL) {
 			separator = "&"
 		}
 		// Add statement_cache_mode=describe to disable prepared statement caching
+		// This works with both connection poolers and standard PostgreSQL
 		databaseURL += separator + "statement_cache_mode=describe"
 	}
 

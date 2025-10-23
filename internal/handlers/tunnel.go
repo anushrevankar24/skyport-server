@@ -238,7 +238,9 @@ func (h *TunnelHandler) ConnectTunnel(c *gin.Context) {
 		c.ClientIP(), tunnelID,
 	)
 	if err != nil {
-		log.Printf("Failed to update tunnel status: %v", err)
+		log.Printf("ERROR: Failed to update tunnel status for %s: %v", tunnelID, err)
+		// Send error message to agent before closing
+		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"terminate","id":"`+tunnelID+`","error":"Database error"}`))
 		return
 	}
 
@@ -248,7 +250,9 @@ func (h *TunnelHandler) ConnectTunnel(c *gin.Context) {
 	var localPort int
 	err = h.db.QueryRow("SELECT local_port FROM tunnels WHERE id = $1", tunnelID).Scan(&localPort)
 	if err != nil {
-		log.Printf("Failed to get tunnel local port: %v", err)
+		log.Printf("ERROR: Failed to get tunnel local port for %s: %v", tunnelID, err)
+		// Send error message to agent before closing
+		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"terminate","id":"`+tunnelID+`","error":"Database error"}`))
 		return
 	}
 
@@ -302,13 +306,22 @@ func (h *TunnelHandler) handleTunnelConnection(tunnelConn *TunnelConnection, pro
 	heartbeatTimeout := 45 * time.Second // Mark inactive if no heartbeat for 45 seconds
 	dbUpdateInterval := 30 * time.Second // Only update DB every 30 seconds to reduce load
 
+	// Channel to signal when read goroutine exits
+	readDone := make(chan struct{})
+
 	// Handle messages from agent in a goroutine
 	go func() {
+		defer close(readDone)
 		for {
 			_, message, err := tunnelConn.Conn.ReadMessage()
 			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					log.Printf("WebSocket error: %v", err)
+				// Log all connection errors for debugging
+				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					log.Printf("Tunnel %s closed gracefully: %v", tunnelConn.TunnelID, err)
+				} else if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					log.Printf("Tunnel %s unexpected close: %v", tunnelConn.TunnelID, err)
+				} else {
+					log.Printf("Tunnel %s read error: %v", tunnelConn.TunnelID, err)
 				}
 				return
 			}
@@ -338,22 +351,29 @@ func (h *TunnelHandler) handleTunnelConnection(tunnelConn *TunnelConnection, pro
 	heartbeatTicker := time.NewTicker(15 * time.Second) // Check every 15 seconds
 	defer heartbeatTicker.Stop()
 
-	for range heartbeatTicker.C {
-		// Check if we've received a heartbeat recently
-		if time.Since(lastHeartbeat) > heartbeatTimeout {
-			log.Printf("Tunnel %s heartbeat timeout - marking as inactive", tunnelConn.TunnelID)
-			// Mark tunnel as inactive due to heartbeat timeout
-			_, err := h.db.Exec("UPDATE tunnels SET is_active = false WHERE id = $1", tunnelConn.TunnelID)
-			if err != nil {
-				log.Printf("Failed to mark tunnel as inactive: %v", err)
+	for {
+		select {
+		case <-readDone:
+			// Read goroutine exited, connection is closed
+			log.Printf("Tunnel %s read goroutine exited", tunnelConn.TunnelID)
+			return
+		case <-heartbeatTicker.C:
+			// Check if we've received a heartbeat recently
+			if time.Since(lastHeartbeat) > heartbeatTimeout {
+				log.Printf("Tunnel %s heartbeat timeout - marking as inactive", tunnelConn.TunnelID)
+				// Mark tunnel as inactive due to heartbeat timeout
+				_, err := h.db.Exec("UPDATE tunnels SET is_active = false WHERE id = $1", tunnelConn.TunnelID)
+				if err != nil {
+					log.Printf("Failed to mark tunnel as inactive: %v", err)
+				}
+				return
 			}
-			return
-		}
 
-		// Send ping to agent
-		if err := protocol.SendPing(); err != nil {
-			log.Printf("Failed to send ping to tunnel %s: %v", tunnelConn.TunnelID, err)
-			return
+			// Send ping to agent
+			if err := protocol.SendPing(); err != nil {
+				log.Printf("Failed to send ping to tunnel %s: %v", tunnelConn.TunnelID, err)
+				return
+			}
 		}
 	}
 }

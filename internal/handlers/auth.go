@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"skyport-server/internal/models"
 	"time"
@@ -35,6 +36,7 @@ func (h *AuthHandler) SignUp(c *gin.Context) {
 	var userExists bool
 	err := h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)", req.Email).Scan(&userExists)
 	if err != nil {
+		log.Printf("ERROR: Signup - failed to check if user exists for email %s: %v", req.Email, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
@@ -110,6 +112,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		log.Printf("ERROR: Login database query failed for email %s: %v", req.Email, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
@@ -131,6 +134,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Save refresh token
 	err = h.saveRefreshToken(user.ID, refreshToken)
 	if err != nil {
+		log.Printf("ERROR: Login - failed to save refresh token for user %s: %v", user.ID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save refresh token"})
 		return
 	}
@@ -342,5 +346,8 @@ func (h *AuthHandler) saveRefreshToken(userID uuid.UUID, refreshToken string) er
 		"INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)",
 		userID, refreshToken, time.Now().Add(time.Hour*24*30), // 30 days
 	)
+	if err != nil {
+		log.Printf("ERROR: Failed to insert refresh token into database for user %s: %v", userID, err)
+	}
 	return err
 }

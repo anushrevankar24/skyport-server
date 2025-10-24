@@ -13,24 +13,40 @@ func Initialize(databaseURL string) (*sql.DB, error) {
 	// Detect pooler type and configure accordingly
 	// Transaction poolers (port 6543) don't support prepared statements at all
 	// Session poolers (port 5432) can use statement caching
-	isTransactionPooler := strings.Contains(databaseURL, ":6543")
+	isTransactionPooler := strings.Contains(databaseURL, ":6543") ||
+		strings.Contains(databaseURL, "port=6543")
 
 	if databaseURL != "" {
-		// Check if URL already has query parameters
+		// Check if URL already has query parameters or uses DSN format
 		separator := "?"
 		if containsQueryParams(databaseURL) {
 			separator = "&"
 		}
+		// DSN format uses space-separated key=value pairs
+		if strings.Contains(databaseURL, "host=") && !strings.Contains(databaseURL, "://") {
+			separator = " "
+		}
 
 		if isTransactionPooler {
-			// Transaction poolers (port 6543) don't support prepared statements
+			// Transaction poolers (port 6543) are NOT RECOMMENDED for this application
+			// They don't support prepared statements and cause connection issues
+			log.Println("⚠️  WARNING: Transaction pooler detected (port 6543)")
+			log.Println("⚠️  Transaction poolers are NOT recommended for applications with WebSockets")
+			log.Println("⚠️  Please switch to Session Pooler (port 5432) for better stability")
+			log.Println("⚠️  Attempting to disable prepared statements, but issues may still occur...")
+
 			// Must use prefer_simple_protocol=yes to disable them completely
 			databaseURL += separator + "prefer_simple_protocol=yes"
-			log.Println("Transaction pooler detected (port 6543) - disabled prepared statements with prefer_simple_protocol=yes")
+			// Also explicitly disable statement cache
+			if separator == " " {
+				databaseURL += " statement_cache_capacity=0"
+			} else {
+				databaseURL += "&statement_cache_capacity=0"
+			}
 		} else if needsStatementCacheMode(databaseURL) {
-			// Session poolers (port 5432) can use statement caching
+			// Session poolers (port 5432) can use statement caching safely
 			databaseURL += separator + "statement_cache_mode=describe"
-			log.Println("Session pooler detected - configured with statement_cache_mode=describe")
+			log.Println("✓ Session pooler detected - configured with statement_cache_mode=describe")
 		}
 	}
 
@@ -39,10 +55,10 @@ func Initialize(databaseURL string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Set connection pool settings optimized for connection pooler
-	// Lower values work better with poolers like PgBouncer/Supabase pooler
-	db.SetMaxOpenConns(10)   // Reduced for pooler efficiency
-	db.SetMaxIdleConns(2)    // Keep minimal idle connections
+	// Set connection pool settings optimized for session pooler
+	// These settings work well with Supabase session pooler (port 5432)
+	db.SetMaxOpenConns(20)   // Reasonable for session pooler
+	db.SetMaxIdleConns(5)    // Keep some idle connections ready
 	db.SetConnMaxLifetime(0) // Reuse connections indefinitely
 	db.SetConnMaxIdleTime(0) // Don't close idle connections
 
@@ -67,12 +83,22 @@ func containsQueryParams(url string) bool {
 // Connection poolers like Supabase and PgBouncer support and need statement_cache_mode
 // Local PostgreSQL installations do not support this parameter
 func needsStatementCacheMode(url string) bool {
+	// First, check for local PostgreSQL - these DON'T need statement_cache_mode
+	localIndicators := []string{"localhost", "127.0.0.1", "host=localhost", "host=127.0.0.1"}
+	for _, indicator := range localIndicators {
+		if contains(url, indicator) {
+			log.Println("✓ Local PostgreSQL detected - using standard configuration")
+			return false
+		}
+	}
+
 	// Connection pooler indicators in the URL
 	poolerIndicators := []string{
 		"supabase.co",     // Supabase hosted
 		"pooler.supabase", // Supabase pooler
 		"pgbouncer",       // PgBouncer
-		":6543",           // PgBouncer default port
+		":5432",           // Session pooler on standard port (when not local)
+		"port=5432",       // Session pooler DSN format
 		"pooler=true",     // Explicit pooler flag
 	}
 
@@ -80,14 +106,6 @@ func needsStatementCacheMode(url string) bool {
 	for _, indicator := range poolerIndicators {
 		if contains(url, indicator) {
 			return true
-		}
-	}
-
-	// Local PostgreSQL (localhost, 127.0.0.1) - don't use statement_cache_mode
-	localIndicators := []string{"localhost", "127.0.0.1"}
-	for _, indicator := range localIndicators {
-		if contains(url, indicator) {
-			return false
 		}
 	}
 

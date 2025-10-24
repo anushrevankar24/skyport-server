@@ -56,6 +56,7 @@ func (h *TunnelHandler) GetTunnels(c *gin.Context) {
 		ORDER BY created_at DESC
 	`, userIDStr)
 	if err != nil {
+		log.Printf("Failed to fetch tunnels for user %s: %v", userIDStr, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tunnels"})
 		return
 	}
@@ -70,6 +71,7 @@ func (h *TunnelHandler) GetTunnels(c *gin.Context) {
 			&tunnel.LastSeen, &tunnel.ConnectedIP, &tunnel.CreatedAt, &tunnel.UpdatedAt,
 		)
 		if err != nil {
+			log.Printf("Failed to scan tunnel for user %s: %v", userIDStr, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan tunnel"})
 			return
 		}
@@ -119,6 +121,7 @@ func (h *TunnelHandler) CreateTunnel(c *gin.Context) {
 	var subdomainExists bool
 	err := h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM tunnels WHERE subdomain = $1)", req.Subdomain).Scan(&subdomainExists)
 	if err != nil {
+		log.Printf("Failed to check subdomain existence for %s: %v", req.Subdomain, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
@@ -144,6 +147,7 @@ func (h *TunnelHandler) CreateTunnel(c *gin.Context) {
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`, tunnelID, userID, req.Name, req.Subdomain, req.LocalPort, authToken)
 	if err != nil {
+		log.Printf("Failed to create tunnel %s for user %s: %v", req.Name, userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create tunnel"})
 		return
 	}
@@ -176,12 +180,14 @@ func (h *TunnelHandler) DeleteTunnel(c *gin.Context) {
 	// Delete tunnel (only if it belongs to the user)
 	result, err := h.db.Exec("DELETE FROM tunnels WHERE id = $1 AND user_id = $2", tunnelID, userIDStr)
 	if err != nil {
+		log.Printf("Failed to delete tunnel %s for user %s: %v", tunnelID, userIDStr, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete tunnel"})
 		return
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		log.Printf("Failed to check deletion result for tunnel %s: %v", tunnelID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check deletion result"})
 		return
 	}
@@ -223,6 +229,7 @@ func (h *TunnelHandler) ConnectTunnel(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		log.Printf("Failed to fetch tunnel %s from database: %v", tunnelID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}

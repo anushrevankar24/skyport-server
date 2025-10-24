@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"strings"
 
@@ -83,6 +84,7 @@ func (h *ProxyHandler) HandleSubdomain(c *gin.Context) {
 	}
 
 	if err != nil {
+		log.Printf("Failed to query tunnel for subdomain %s: %v", subdomain, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}

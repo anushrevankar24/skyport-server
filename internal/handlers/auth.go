@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"skyport-server/internal/models"
 	"time"
@@ -35,6 +36,7 @@ func (h *AuthHandler) SignUp(c *gin.Context) {
 	var userExists bool
 	err := h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)", req.Email).Scan(&userExists)
 	if err != nil {
+		log.Printf("Failed to check user existence for email %s: %v", req.Email, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
@@ -47,6 +49,7 @@ func (h *AuthHandler) SignUp(c *gin.Context) {
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
+		log.Printf("Failed to hash password for email %s: %v", req.Email, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 		return
 	}
@@ -58,6 +61,7 @@ func (h *AuthHandler) SignUp(c *gin.Context) {
 		userID, req.Email, string(hashedPassword), req.Name,
 	)
 	if err != nil {
+		log.Printf("Failed to create user with email %s: %v", req.Email, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 		return
 	}
@@ -65,6 +69,7 @@ func (h *AuthHandler) SignUp(c *gin.Context) {
 	// Generate tokens
 	token, refreshToken, err := h.generateTokens(userID.String())
 	if err != nil {
+		log.Printf("Failed to generate tokens for user %s: %v", userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}
@@ -72,6 +77,7 @@ func (h *AuthHandler) SignUp(c *gin.Context) {
 	// Save refresh token
 	err = h.saveRefreshToken(userID, refreshToken)
 	if err != nil {
+		log.Printf("Failed to save refresh token for user %s: %v", userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save refresh token"})
 		return
 	}
@@ -110,6 +116,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		log.Printf("Failed to fetch user for login with email %s: %v", req.Email, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
@@ -124,6 +131,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Generate tokens
 	token, refreshToken, err := h.generateTokens(user.ID.String())
 	if err != nil {
+		log.Printf("Failed to generate tokens for user %s: %v", user.ID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}
@@ -131,6 +139,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Save refresh token
 	err = h.saveRefreshToken(user.ID, refreshToken)
 	if err != nil {
+		log.Printf("Failed to save refresh token for user %s: %v", user.ID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save refresh token"})
 		return
 	}
@@ -164,6 +173,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		log.Printf("Failed to validate refresh token: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
@@ -176,6 +186,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	// Generate new tokens
 	token, newRefreshToken, err := h.generateTokens(userID.String())
 	if err != nil {
+		log.Printf("Failed to generate new tokens for user %s: %v", userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}
@@ -183,12 +194,14 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	// Delete old refresh token and save new one
 	_, err = h.db.Exec("DELETE FROM refresh_tokens WHERE token = $1", req.RefreshToken)
 	if err != nil {
+		log.Printf("Failed to delete old refresh token for user %s: %v", userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete old refresh token"})
 		return
 	}
 
 	err = h.saveRefreshToken(userID, newRefreshToken)
 	if err != nil {
+		log.Printf("Failed to save new refresh token for user %s: %v", userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save refresh token"})
 		return
 	}
@@ -243,6 +256,7 @@ func (h *AuthHandler) AgentAuth(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		log.Printf("Failed to fetch user %s for agent auth: %v", userIDStr, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
@@ -250,6 +264,7 @@ func (h *AuthHandler) AgentAuth(c *gin.Context) {
 	// Generate permanent agent service token (no expiry like Cloudflare/Ngrok)
 	agentToken, err := h.generateAgentToken(userIDStr)
 	if err != nil {
+		log.Printf("Failed to generate agent token for user %s: %v", userIDStr, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate agent token"})
 		return
 	}
@@ -280,6 +295,7 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		log.Printf("Failed to fetch profile for user %s: %v", userIDStr, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}

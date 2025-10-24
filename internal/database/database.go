@@ -3,22 +3,35 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"log"
+	"strings"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func Initialize(databaseURL string) (*sql.DB, error) {
-	// Disable prepared statement caching to avoid conflicts with connection poolers
-	// This prevents "prepared statement already exists" errors
+	// Detect pooler type and configure accordingly
+	// Transaction poolers (port 6543) don't support prepared statements at all
+	// Session poolers (port 5432) can use statement caching
+	isTransactionPooler := strings.Contains(databaseURL, ":6543")
+	
 	if databaseURL != "" {
 		// Check if URL already has query parameters
 		separator := "?"
 		if containsQueryParams(databaseURL) {
 			separator = "&"
 		}
-		// Add statement_cache_mode=describe to disable prepared statement caching
-		// This works with both connection poolers and standard PostgreSQL
-		databaseURL += separator + "statement_cache_mode=describe"
+		
+		if isTransactionPooler {
+			// Transaction poolers (port 6543) don't support prepared statements
+			// Must use prefer_simple_protocol=yes to disable them completely
+			databaseURL += separator + "prefer_simple_protocol=yes"
+			log.Println("Transaction pooler detected (port 6543) - disabled prepared statements with prefer_simple_protocol=yes")
+		} else if needsStatementCacheMode(databaseURL) {
+			// Session poolers (port 5432) can use statement caching
+			databaseURL += separator + "statement_cache_mode=describe"
+			log.Println("Session pooler detected - configured with statement_cache_mode=describe")
+		}
 	}
 
 	db, err := sql.Open("pgx", databaseURL)

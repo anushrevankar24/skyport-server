@@ -28,19 +28,21 @@ type TunnelMessage struct {
 
 // TunnelProtocol handles the complete HTTP tunneling protocol
 type TunnelProtocol struct {
-	conn         *websocket.Conn
-	tunnelID     string
-	localPort    int
-	pendingReqs  map[string]chan *TunnelMessage
-	requestCount int64
+	conn          *websocket.Conn
+	tunnelID      string
+	localPort     int
+	pendingReqs   map[string]chan *TunnelMessage
+	requestCount  int64
+	lastHeartbeat time.Time
 }
 
 func NewTunnelProtocol(conn *websocket.Conn, tunnelID string, localPort int) *TunnelProtocol {
 	return &TunnelProtocol{
-		conn:        conn,
-		tunnelID:    tunnelID,
-		localPort:   localPort,
-		pendingReqs: make(map[string]chan *TunnelMessage),
+		conn:          conn,
+		tunnelID:      tunnelID,
+		localPort:     localPort,
+		pendingReqs:   make(map[string]chan *TunnelMessage),
+		lastHeartbeat: time.Now(),
 	}
 }
 
@@ -210,8 +212,7 @@ func (tp *TunnelProtocol) handlePing(message *TunnelMessage) error {
 }
 
 func (tp *TunnelProtocol) handlePong(message *TunnelMessage) error {
-	// Update connection health
-	log.Printf("Received pong from tunnel %s", tp.tunnelID)
+	// Update connection health (silent - heartbeat working)
 	return nil
 }
 

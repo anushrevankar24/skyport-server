@@ -80,6 +80,18 @@ func (h *TunnelHandler) GetTunnels(c *gin.Context) {
 		tunnels = []models.Tunnel{}
 	}
 
+	// Enhance with real-time data from memory for active tunnels
+	h.tunnelsMutex.RLock()
+	for i := range tunnels {
+		if protocol, exists := h.activeTunnels[tunnels[i].ID.String()]; exists {
+			// Get real-time status from memory
+			tunnels[i].LastSeen = &protocol.lastHeartbeat
+			// Consider active if heartbeat is less than 45 seconds old
+			tunnels[i].IsActive = time.Since(protocol.lastHeartbeat) < 45*time.Second
+		}
+	}
+	h.tunnelsMutex.RUnlock()
+
 	c.JSON(http.StatusOK, gin.H{"tunnels": tunnels})
 }
 
@@ -325,13 +337,10 @@ func (h *TunnelHandler) handleTunnelConnection(tunnelConn *TunnelConnection, pro
 
 	// Track last heartbeat time
 	lastHeartbeat := time.Now()
-	lastDBUpdate := time.Now()
 	heartbeatTimeout := 45 * time.Second // Mark inactive if no heartbeat for 45 seconds
-	dbUpdateInterval := 30 * time.Second // Only update DB every 30 seconds to reduce load
 
 	// Set up ping handler to respond to agent's WebSocket control frame pings
 	tunnelConn.Conn.SetPingHandler(func(appData string) error {
-		log.Printf("Received ping from tunnel %s, sending pong", tunnelConn.TunnelID)
 		// Extend read deadline when we receive a ping
 		tunnelConn.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		// Send pong response with write deadline
@@ -340,15 +349,16 @@ func (h *TunnelHandler) handleTunnelConnection(tunnelConn *TunnelConnection, pro
 			log.Printf("Failed to send pong to tunnel %s: %v", tunnelConn.TunnelID, err)
 		}
 		lastHeartbeat = time.Now()
+		protocol.lastHeartbeat = time.Now()
 		return err
 	})
 
 	// Set up pong handler to detect when agent responds to our pings
 	tunnelConn.Conn.SetPongHandler(func(appData string) error {
-		log.Printf("Received pong from tunnel %s", tunnelConn.TunnelID)
 		// Extend read deadline when we receive a pong
 		tunnelConn.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		lastHeartbeat = time.Now()
+		protocol.lastHeartbeat = time.Now()
 		return nil
 	})
 
@@ -386,19 +396,9 @@ func (h *TunnelHandler) handleTunnelConnection(tunnelConn *TunnelConnection, pro
 				log.Printf("Failed to handle tunnel message: %v", err)
 			}
 
-			// Update last seen timestamp only every 30 seconds to reduce DB load
-			// This is fine since we track heartbeat in memory
-			if time.Since(lastDBUpdate) >= dbUpdateInterval {
-				_, err = h.db.Exec("UPDATE tunnels SET last_seen = NOW() WHERE id = $1", tunnelConn.TunnelID)
-				if err != nil {
-					log.Printf("Failed to update last seen: %v", err)
-				} else {
-					lastDBUpdate = time.Now()
-				}
-			}
-
 			// Refresh heartbeat on any received message
 			lastHeartbeat = time.Now()
+			protocol.lastHeartbeat = time.Now()
 		}
 	}()
 
@@ -434,7 +434,6 @@ func (h *TunnelHandler) handleTunnelConnection(tunnelConn *TunnelConnection, pro
 				log.Printf("Failed to send ping to tunnel %s: %v", tunnelConn.TunnelID, err)
 				return
 			}
-			log.Printf("Sent ping to tunnel %s", tunnelConn.TunnelID)
 		}
 	}
 }

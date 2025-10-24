@@ -275,6 +275,11 @@ func (tp *TunnelProtocol) sendMessage(message *TunnelMessage) error {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
+	// Set write deadline to prevent hanging on dead connections
+	if err := tp.conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return fmt.Errorf("failed to set write deadline: %w", err)
+	}
+
 	return tp.conn.WriteMessage(websocket.TextMessage, data)
 }
 
@@ -283,7 +288,9 @@ func (tp *TunnelProtocol) SendMessage(message *TunnelMessage) error {
 	return tp.sendMessage(message)
 }
 
-// SendPing sends a ping message to the agent
+// SendPing sends a ping message to the agent (JSON-based, deprecated)
+// Note: This is kept for backward compatibility, but WebSocket control frame pings
+// (sent via WriteControl in tunnel.go) are now used for heartbeat instead
 func (tp *TunnelProtocol) SendPing() error {
 	pingMessage := &TunnelMessage{
 		Type:      "ping",

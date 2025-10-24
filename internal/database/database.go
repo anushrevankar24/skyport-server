@@ -14,14 +14,14 @@ func Initialize(databaseURL string) (*sql.DB, error) {
 	// Transaction poolers (port 6543) don't support prepared statements at all
 	// Session poolers (port 5432) can use statement caching
 	isTransactionPooler := strings.Contains(databaseURL, ":6543")
-	
+
 	if databaseURL != "" {
 		// Check if URL already has query parameters
 		separator := "?"
 		if containsQueryParams(databaseURL) {
 			separator = "&"
 		}
-		
+
 		if isTransactionPooler {
 			// Transaction poolers (port 6543) don't support prepared statements
 			// Must use prefer_simple_protocol=yes to disable them completely

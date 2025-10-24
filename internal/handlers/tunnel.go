@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"log"
+	"net"
 	"net/http"
 	"skyport-server/internal/config"
 	"skyport-server/internal/models"
@@ -35,6 +36,8 @@ func NewTunnelHandler(db *sql.DB) *TunnelHandler {
 			CheckOrigin: func(r *http.Request) bool {
 				return true // Allow all origins for now
 			},
+			// Enable compression for better performance over slow connections
+			EnableCompression: true,
 		},
 	}
 }
@@ -232,6 +235,26 @@ func (h *TunnelHandler) ConnectTunnel(c *gin.Context) {
 	}
 	defer conn.Close()
 
+	// Enable TCP keepalive on the underlying connection
+	// This is critical for maintaining long-lived connections through NAT/firewalls
+	if tcpConn, ok := conn.UnderlyingConn().(*net.TCPConn); ok {
+		if err := tcpConn.SetKeepAlive(true); err != nil {
+			log.Printf("Failed to enable TCP keepalive for tunnel %s: %v", tunnelID, err)
+		} else {
+			// Send keepalive probes every 30 seconds
+			// This keeps NAT/firewall entries alive and detects dead connections
+			if err := tcpConn.SetKeepAlivePeriod(30 * time.Second); err != nil {
+				log.Printf("Failed to set TCP keepalive period for tunnel %s: %v", tunnelID, err)
+			} else {
+				log.Printf("TCP keepalive enabled for tunnel %s (30s interval)", tunnelID)
+			}
+		}
+
+		// Optional: Set TCP buffer sizes for better performance
+		tcpConn.SetReadBuffer(64 * 1024)
+		tcpConn.SetWriteBuffer(64 * 1024)
+	}
+
 	// Update tunnel as active
 	_, err = h.db.Exec(
 		"UPDATE tunnels SET is_active = true, last_seen = NOW(), connected_ip = $1 WHERE id = $2",
@@ -306,6 +329,35 @@ func (h *TunnelHandler) handleTunnelConnection(tunnelConn *TunnelConnection, pro
 	heartbeatTimeout := 45 * time.Second // Mark inactive if no heartbeat for 45 seconds
 	dbUpdateInterval := 30 * time.Second // Only update DB every 30 seconds to reduce load
 
+	// Set up ping handler to respond to agent's WebSocket control frame pings
+	tunnelConn.Conn.SetPingHandler(func(appData string) error {
+		log.Printf("Received ping from tunnel %s, sending pong", tunnelConn.TunnelID)
+		// Extend read deadline when we receive a ping
+		tunnelConn.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		// Send pong response with write deadline
+		err := tunnelConn.Conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(10*time.Second))
+		if err != nil {
+			log.Printf("Failed to send pong to tunnel %s: %v", tunnelConn.TunnelID, err)
+		}
+		lastHeartbeat = time.Now()
+		return err
+	})
+
+	// Set up pong handler to detect when agent responds to our pings
+	tunnelConn.Conn.SetPongHandler(func(appData string) error {
+		log.Printf("Received pong from tunnel %s", tunnelConn.TunnelID)
+		// Extend read deadline when we receive a pong
+		tunnelConn.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		lastHeartbeat = time.Now()
+		return nil
+	})
+
+	// Set initial read deadline (60 seconds allows time for first ping/pong exchange)
+	if err := tunnelConn.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+		log.Printf("Failed to set initial read deadline for tunnel %s: %v", tunnelConn.TunnelID, err)
+		return
+	}
+
 	// Channel to signal when read goroutine exits
 	readDone := make(chan struct{})
 
@@ -325,6 +377,9 @@ func (h *TunnelHandler) handleTunnelConnection(tunnelConn *TunnelConnection, pro
 				}
 				return
 			}
+
+			// Extend read deadline on successful read (application-level messages)
+			tunnelConn.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 
 			// Handle tunnel protocol messages
 			if err := protocol.HandleTunnelMessage(message); err != nil {
@@ -347,8 +402,8 @@ func (h *TunnelHandler) handleTunnelConnection(tunnelConn *TunnelConnection, pro
 		}
 	}()
 
-	// Heartbeat monitoring loop
-	heartbeatTicker := time.NewTicker(15 * time.Second) // Check every 15 seconds
+	// Heartbeat monitoring loop - send WebSocket control frame pings
+	heartbeatTicker := time.NewTicker(15 * time.Second) // Send ping every 15 seconds
 	defer heartbeatTicker.Stop()
 
 	for {
@@ -369,11 +424,17 @@ func (h *TunnelHandler) handleTunnelConnection(tunnelConn *TunnelConnection, pro
 				return
 			}
 
-			// Send ping to agent
-			if err := protocol.SendPing(); err != nil {
+			// Send WebSocket control frame ping to agent
+			err := tunnelConn.Conn.WriteControl(
+				websocket.PingMessage,
+				[]byte{},
+				time.Now().Add(10*time.Second),
+			)
+			if err != nil {
 				log.Printf("Failed to send ping to tunnel %s: %v", tunnelConn.TunnelID, err)
 				return
 			}
+			log.Printf("Sent ping to tunnel %s", tunnelConn.TunnelID)
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"skyport-server/internal/templates"
 	"strconv"
 	"strings"
 	"time"
@@ -217,6 +218,12 @@ func (tp *TunnelProtocol) handlePong(message *TunnelMessage) error {
 }
 
 func (tp *TunnelProtocol) writeHTTPResponse(w http.ResponseWriter, response *TunnelMessage) {
+	// Check if this is an error response that needs a nice error page
+	if response.Error != "" {
+		tp.writeErrorPage(w, response)
+		return
+	}
+
 	// Set status code
 	if response.Status > 0 {
 		w.WriteHeader(response.Status)
@@ -231,6 +238,27 @@ func (tp *TunnelProtocol) writeHTTPResponse(w http.ResponseWriter, response *Tun
 	if len(response.Body) > 0 {
 		w.Write(response.Body)
 	}
+}
+
+// writeErrorPage renders a beautiful error page like Cloudflare/ngrok
+func (tp *TunnelProtocol) writeErrorPage(w http.ResponseWriter, response *TunnelMessage) {
+	// Use the template system to render error page
+	html, err := templates.RenderLocalServiceError(tp.localPort, response.Error)
+	if err != nil {
+		// Fallback to simple error if template fails
+		log.Printf("Failed to render error template: %v", err)
+		http.Error(w, fmt.Sprintf("Error: %s", response.Error), http.StatusBadGateway)
+		return
+	}
+
+	// Set appropriate status code and content type
+	statusCode := http.StatusBadGateway
+	if response.Status > 0 {
+		statusCode = response.Status
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(statusCode)
+	w.Write([]byte(html))
 }
 
 func (tp *TunnelProtocol) handleWebSocketTunnel(w http.ResponseWriter, r *http.Request, requestID string) {

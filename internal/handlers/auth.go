@@ -261,7 +261,7 @@ func (h *AuthHandler) AgentAuth(c *gin.Context) {
 		return
 	}
 
-	// Generate permanent agent service token (no expiry like Cloudflare/Ngrok)
+	// Generate permanent agent service token (no expiry)
 	agentToken, err := h.generateAgentToken(userIDStr)
 	if err != nil {
 		log.Printf("Failed to generate agent token for user %s: %v", userIDStr, err)
@@ -334,9 +334,9 @@ func (h *AuthHandler) generateTokens(userID string) (string, string, error) {
 	return tokenString, refreshTokenString, nil
 }
 
-// generateAgentToken creates a permanent service token for agents (no expiry like Cloudflare/Ngrok)
+// generateAgentToken creates a permanent service token for agents (no expiry)
 func (h *AuthHandler) generateAgentToken(userID string) (string, error) {
-	// Generate permanent agent token (no expiry - service token like Cloudflare Tunnel)
+	// Generate permanent agent token (no expiry - service token)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": userID,
 		"iat":     time.Now().Unix(),

@@ -59,7 +59,7 @@ func main() {
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(db, cfg.JWTSecret)
 	tunnelHandler := handlers.NewTunnelHandler(db)
-	proxyHandler := handlers.NewProxyHandler(db, tunnelHandler)
+	proxyHandler := handlers.NewProxyHandler(db, tunnelHandler, cfg)
 
 	// Routes
 	api := r.Group("/api/v1")

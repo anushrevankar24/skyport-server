@@ -240,7 +240,7 @@ func (tp *TunnelProtocol) writeHTTPResponse(w http.ResponseWriter, response *Tun
 	}
 }
 
-// writeErrorPage renders a beautiful error page like Cloudflare/ngrok
+// writeErrorPage renders a beautiful error page
 func (tp *TunnelProtocol) writeErrorPage(w http.ResponseWriter, response *TunnelMessage) {
 	// Use the template system to render error page
 	html, err := templates.RenderLocalServiceError(tp.localPort, response.Error)

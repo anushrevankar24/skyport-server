@@ -35,7 +35,8 @@ type ErrorPageData struct {
 
 // TunnelErrorData contains data for tunnel-specific errors
 type TunnelErrorData struct {
-	Subdomain string
+	Subdomain    string
+	DashboardURL string
 }
 
 // LocalServiceErrorData contains data for local service connection errors
@@ -61,13 +62,16 @@ func RenderErrorPage(data ErrorPageData) (string, error) {
 }
 
 // RenderTunnelNotFound renders the tunnel_not_found.html template
-func RenderTunnelNotFound(subdomain string) (string, error) {
+func RenderTunnelNotFound(subdomain, dashboardURL string) (string, error) {
 	if err := Initialize(); err != nil {
 		return "", fmt.Errorf("failed to initialize templates: %w", err)
 	}
 
 	var buf bytes.Buffer
-	data := TunnelErrorData{Subdomain: subdomain}
+	data := TunnelErrorData{
+		Subdomain:    subdomain,
+		DashboardURL: dashboardURL,
+	}
 	if err := templates.ExecuteTemplate(&buf, "tunnel_not_found.html", data); err != nil {
 		return "", fmt.Errorf("failed to render tunnel not found page: %w", err)
 	}
@@ -75,13 +79,16 @@ func RenderTunnelNotFound(subdomain string) (string, error) {
 }
 
 // RenderTunnelOffline renders the tunnel_offline.html template
-func RenderTunnelOffline(subdomain string) (string, error) {
+func RenderTunnelOffline(subdomain, dashboardURL string) (string, error) {
 	if err := Initialize(); err != nil {
 		return "", fmt.Errorf("failed to initialize templates: %w", err)
 	}
 
 	var buf bytes.Buffer
-	data := TunnelErrorData{Subdomain: subdomain}
+	data := TunnelErrorData{
+		Subdomain:    subdomain,
+		DashboardURL: dashboardURL,
+	}
 	if err := templates.ExecuteTemplate(&buf, "tunnel_offline.html", data); err != nil {
 		return "", fmt.Errorf("failed to render tunnel offline page: %w", err)
 	}
@@ -89,13 +96,16 @@ func RenderTunnelOffline(subdomain string) (string, error) {
 }
 
 // RenderTunnelConnectionLost renders the tunnel_connection_lost.html template
-func RenderTunnelConnectionLost(subdomain string) (string, error) {
+func RenderTunnelConnectionLost(subdomain, dashboardURL string) (string, error) {
 	if err := Initialize(); err != nil {
 		return "", fmt.Errorf("failed to initialize templates: %w", err)
 	}
 
 	var buf bytes.Buffer
-	data := TunnelErrorData{Subdomain: subdomain}
+	data := TunnelErrorData{
+		Subdomain:    subdomain,
+		DashboardURL: dashboardURL,
+	}
 	if err := templates.ExecuteTemplate(&buf, "tunnel_connection_lost.html", data); err != nil {
 		return "", fmt.Errorf("failed to render tunnel connection lost page: %w", err)
 	}

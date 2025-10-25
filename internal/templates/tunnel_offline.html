@@ -8,98 +8,93 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #ffffff;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
+            color: #333;
         }
         .container {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 700px;
+            max-width: 600px;
             width: 100%;
-            padding: 48px;
-            animation: slideUp 0.3s ease-out;
-        }
-        @keyframes slideUp {
-            from { transform: translateY(20px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-        .logo {
-            font-size: 48px;
-            margin-bottom: 16px;
         }
         h1 {
-            color: #f39c12;
-            font-size: 32px;
-            margin-bottom: 12px;
-            font-weight: 700;
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #000;
         }
         p {
-            color: #2d3748;
+            font-size: 15px;
             line-height: 1.6;
-            margin-bottom: 16px;
+            color: #4a4a4a;
+            margin-bottom: 24px;
         }
         .info {
-            background: #f0f7ff;
-            border-left: 4px solid #3498db;
-            padding: 24px;
-            border-radius: 8px;
+            background: #f9f9f9;
+            border: 1px solid #e5e5e5;
+            padding: 20px;
             margin: 24px 0;
         }
-        .info p {
-            color: #2c5282;
+        .info-title {
+            font-size: 14px;
             font-weight: 600;
+            color: #000;
             margin-bottom: 12px;
         }
         .info ol {
             margin-left: 20px;
-            color: #2d3748;
+            font-size: 14px;
             line-height: 1.8;
+            color: #4a4a4a;
         }
         .info li {
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
         .footer {
-            text-align: center;
             margin-top: 32px;
-            padding-top: 24px;
-            border-top: 1px solid #e2e8f0;
-            color: #718096;
+            padding-top: 16px;
+            border-top: 1px solid #e5e5e5;
+            font-size: 13px;
+            color: #888;
+        }
+        .footer a {
+            color: #0051c3;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
             font-size: 14px;
         }
-        strong { font-weight: 600; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="logo">🚇</div>
-            <h1>Tunnel Offline</h1>
-        </div>
-        
-        <p>The tunnel "<strong>{{.Subdomain}}</strong>" exists but is not currently connected.</p>
+        <h1>Tunnel Offline</h1>
+        <p>The tunnel <code>{{.Subdomain}}</code> exists but is not currently connected.</p>
         
         <div class="info">
-            <p>To activate this tunnel:</p>
+            <div class="info-title">To activate this tunnel:</div>
             <ol>
                 <li>Open SkyPort Agent on your computer</li>
                 <li>Sign in to your account</li>
-                <li>Click "Connect" next to the "<strong>{{.Subdomain}}</strong>" tunnel</li>
+                <li>Connect the <code>{{.Subdomain}}</code> tunnel</li>
             </ol>
         </div>
         
         <div class="footer">
-            Powered by <a href="/">SkyPort</a>
+            Powered by <a href="{{.DashboardURL}}">SkyPort</a>
         </div>
     </div>
 </body>
 </html>
+
 

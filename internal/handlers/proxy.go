@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"skyport-server/internal/config"
 	"skyport-server/internal/templates"
 	"strings"
 
@@ -13,12 +14,14 @@ import (
 type ProxyHandler struct {
 	db            *sql.DB
 	tunnelHandler *TunnelHandler
+	config        *config.Config
 }
 
-func NewProxyHandler(db *sql.DB, tunnelHandler *TunnelHandler) *ProxyHandler {
+func NewProxyHandler(db *sql.DB, tunnelHandler *TunnelHandler, cfg *config.Config) *ProxyHandler {
 	return &ProxyHandler{
 		db:            db,
 		tunnelHandler: tunnelHandler,
+		config:        cfg,
 	}
 }
 
@@ -53,7 +56,8 @@ func (h *ProxyHandler) HandleSubdomain(c *gin.Context) {
 	`, subdomain).Scan(&tunnelID, &userID, &localPort, &isActive)
 
 	if err == sql.ErrNoRows {
-		html, err := templates.RenderTunnelNotFound(subdomain)
+		dashboardURL := h.config.WebAppURL + "/dashboard"
+		html, err := templates.RenderTunnelNotFound(subdomain, dashboardURL)
 		if err != nil {
 			log.Printf("Failed to render template: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Template error"})
@@ -70,7 +74,8 @@ func (h *ProxyHandler) HandleSubdomain(c *gin.Context) {
 	}
 
 	if !isActive {
-		html, err := templates.RenderTunnelOffline(subdomain)
+		dashboardURL := h.config.WebAppURL + "/dashboard"
+		html, err := templates.RenderTunnelOffline(subdomain, dashboardURL)
 		if err != nil {
 			log.Printf("Failed to render template: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Template error"})
@@ -83,7 +88,8 @@ func (h *ProxyHandler) HandleSubdomain(c *gin.Context) {
 	// Check if we have an active tunnel connection
 	tunnel, exists := h.tunnelHandler.GetActiveTunnel(tunnelID)
 	if !exists {
-		html, err := templates.RenderTunnelConnectionLost(subdomain)
+		dashboardURL := h.config.WebAppURL + "/dashboard"
+		html, err := templates.RenderTunnelConnectionLost(subdomain, dashboardURL)
 		if err != nil {
 			log.Printf("Failed to render template: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Template error"})
